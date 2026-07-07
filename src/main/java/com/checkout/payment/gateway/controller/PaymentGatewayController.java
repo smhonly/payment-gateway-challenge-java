@@ -25,7 +25,7 @@ public class PaymentGatewayController {
   @PostMapping("/payment")
   public ResponseEntity<PostPaymentResponse> processPayment(
       @RequestBody PostPaymentRequest request,
-      @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+      @RequestHeader(value = "Idempotency-Key") String idempotencyKey) {
     PostPaymentResponse response = paymentGatewayService.processPayment(request, idempotencyKey);
     return new ResponseEntity<>(response, HttpStatus.CREATED);
   }

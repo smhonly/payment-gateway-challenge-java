@@ -98,7 +98,7 @@ The `Idempotency-Key` header prevents duplicate payment processing on retry.
 - Replay with the same key: returns the cached response. Bank is NOT called again. Same `id` returned.
 - All outcomes are cached, including Rejected.
 
-Actually bank simulator also need to add a Idempotency Key, such as merchantRefId to avoid duplicated pay.
+Actually bank simulator also need to add an Idempotency Key, such as merchantRefId to avoid duplicated pay.
 
 ---
 
@@ -119,9 +119,9 @@ If bank client call failed, the payment status will be pending.
 
 The pending payment handler is a scheduler that will check pending status payments every 30s. 
 
-### Solution1. For simple, then handler just sets payment status to failed.   
+### Option 1. For simple, then handler just sets payment status to failed.   
 
-### Solution2. Retry bankClient.processPayment(bankRequest)
+### Option 2. Retry bankClient.processPayment(bankRequest)
 
-### Solution3. If bank client supports inquiry API, need query status and update payment status in paymentsRepository.    
+### Option 3. If bank client supports inquiry API, need query status and update payment status in paymentsRepository.    
 If db status is not fund moved, but bank status is fund moved, need to refund for this long fund case.(refund is out of scope)    

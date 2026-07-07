@@ -24,11 +24,12 @@ public class PendingPaymentHandler {
   public void handle() {
     List<PostPaymentResponse> pendings = paymentsRepository.findPending();
     for (PostPaymentResponse p : pendings) {
-      //todo: if bank client support inquiry, need query status and update in paymentsRepository.
+      //option1. todo: if bank client support inquiry, need query status and update in paymentsRepository.
+      //option2. todo: retry bank call for 3 times.
 
       //for simple, just set to failed
       p.setStatus(PaymentStatus.FAILED);
-      paymentsRepository.store(p);
+      paymentsRepository.save(p);
       LOG.warn("Reconciled old PENDING payment {} to FAILED", p.getId());
     }
   }

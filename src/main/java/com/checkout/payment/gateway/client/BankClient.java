@@ -1,5 +1,6 @@
 package com.checkout.payment.gateway.client;
 
+import com.checkout.payment.gateway.exception.BankUnavailableException;
 import com.checkout.payment.gateway.model.BankPaymentRequest;
 import com.checkout.payment.gateway.model.BankPaymentResponse;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
@@ -33,13 +34,14 @@ public class BankClient {
   public BankPaymentResponse processPayment(BankPaymentRequest request) {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_JSON);
+    //todo: add credential headers if bank needed for prod
     HttpEntity<BankPaymentRequest> entity = new HttpEntity<>(request, headers);
     return restTemplate.postForObject(bankBaseUrl + "/payments", entity,
         BankPaymentResponse.class);
   }
 
   private BankPaymentResponse fallback(BankPaymentRequest request, Throwable t) {
-    LOG.warn("Fallback, Bank unavailable!");
-    return null;
+    LOG.error("Fallback, Bank unavailable!");
+    throw new BankUnavailableException("Fallback, Bank unavailable!");
   }
 }

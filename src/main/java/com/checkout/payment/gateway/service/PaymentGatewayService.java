@@ -2,6 +2,7 @@ package com.checkout.payment.gateway.service;
 
 import com.checkout.payment.gateway.client.BankClient;
 import com.checkout.payment.gateway.enums.PaymentStatus;
+import com.checkout.payment.gateway.exception.BankUnavailableException;
 import com.checkout.payment.gateway.exception.EventProcessingException;
 import com.checkout.payment.gateway.exception.InvalidRequestException;
 import com.checkout.payment.gateway.model.BankPaymentRequest;
@@ -12,7 +13,6 @@ import com.checkout.payment.gateway.repository.PaymentsRepository;
 import java.time.YearMonth;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,9 +26,9 @@ public class PaymentGatewayService {
 
   private final PaymentsRepository paymentsRepository;
   private final BankClient bankClient;
-  private final ConcurrentHashMap<String, PostPaymentResponse> idempotencyCache = new ConcurrentHashMap<>();
 
-  public PaymentGatewayService(PaymentsRepository paymentsRepository, BankClient bankClient) {
+  public PaymentGatewayService(PaymentsRepository paymentsRepository,
+      BankClient bankClient) {
     this.paymentsRepository = paymentsRepository;
     this.bankClient = bankClient;
   }
@@ -38,42 +38,47 @@ public class PaymentGatewayService {
     return paymentsRepository.get(id).orElseThrow(() -> new EventProcessingException("Invalid ID"));
   }
 
-  public synchronized PostPaymentResponse processPayment(PostPaymentRequest request, String idempotencyKey) {
+  public PostPaymentResponse processPayment(PostPaymentRequest request,
+      String idempotencyKey) {
     if (idempotencyKey == null || idempotencyKey.isBlank()) {
       throw new InvalidRequestException("Idempotency-Key header is required");
     }
 
-    PostPaymentResponse cached = idempotencyCache.get(idempotencyKey);
+    PostPaymentResponse cached = paymentsRepository.get(idempotencyKey);
     if (cached != null) {
       return cached;
     }
 
     UUID paymentId = UUID.randomUUID();
+    PostPaymentResponse response = buildResponse(request, paymentId, PaymentStatus.INIT);
+    paymentsRepository.save(idempotencyKey, response);
 
     try {
       validate(request);
     } catch (InvalidRequestException e) {
       PostPaymentResponse rejected = buildResponse(request, paymentId, PaymentStatus.REJECTED);
-      paymentsRepository.store(rejected);
-      idempotencyCache.put(idempotencyKey, rejected);
+      paymentsRepository.save(idempotencyKey, rejected);
       return rejected;
     }
 
-    PostPaymentResponse response = buildResponse(request, paymentId, PaymentStatus.PENDING);
-    paymentsRepository.store(response);
+    response = buildResponse(request, paymentId, PaymentStatus.PENDING);
+    paymentsRepository.save(idempotencyKey, response);
 
     BankPaymentRequest bankRequest = toBankRequest(request);
-    BankPaymentResponse bankResponse = bankClient.processPayment(bankRequest);
-    if (bankResponse == null) {
+    BankPaymentResponse bankResponse;
+    try {
+      bankResponse = bankClient.processPayment(bankRequest);
+    } catch (BankUnavailableException e) {
       LOG.warn("Bank unavailable for payment {}; PENDING...", paymentId);
-      idempotencyCache.put(idempotencyKey, response);
+      return response;
+    } catch (Exception e) {
+      LOG.error("Bank call error for payment {}.", paymentId, e);
       return response;
     }
+
     response.setStatus(bankResponse.isAuthorized()
         ? PaymentStatus.AUTHORIZED : PaymentStatus.DECLINED);
-    paymentsRepository.store(response);
-
-    idempotencyCache.put(idempotencyKey, response);
+    paymentsRepository.save(idempotencyKey, response);
     return response;
   }
 

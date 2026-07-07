@@ -2,7 +2,6 @@ package com.checkout.payment.gateway.repository;
 
 import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,14 +14,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class PaymentsRepository {
 
   private final ConcurrentHashMap<UUID, PostPaymentResponse> payments = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<String, UUID> idempotencyDb = new ConcurrentHashMap<>();
 
   @Transactional
-  public void store(PostPaymentResponse payment) {
+  public void save(PostPaymentResponse payment) {
     payments.put(payment.getId(), payment);
   }
 
   public Optional<PostPaymentResponse> get(UUID id) {
     return Optional.ofNullable(payments.get(id));
+  }
+
+  public PostPaymentResponse get(String idempotencyKey) {
+    UUID paymentId = idempotencyDb.get(idempotencyKey);
+    return paymentId == null ? null : payments.get(paymentId);
+  }
+
+  @Transactional
+  public void save(String idempotencyKey, PostPaymentResponse response) {
+    idempotencyDb.put(idempotencyKey, response.getId());
+    payments.put(response.getId(), response);
   }
 
   public List<PostPaymentResponse> findPending() {

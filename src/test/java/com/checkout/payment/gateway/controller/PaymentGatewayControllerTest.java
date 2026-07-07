@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.checkout.payment.gateway.client.BankClient;
 import com.checkout.payment.gateway.enums.PaymentStatus;
+import com.checkout.payment.gateway.exception.BankUnavailableException;
 import com.checkout.payment.gateway.model.BankPaymentRequest;
 import com.checkout.payment.gateway.model.BankPaymentResponse;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
@@ -50,7 +51,7 @@ class PaymentGatewayControllerTest {
     payment.setExpiryYear(2024);
     payment.setCardNumberLastFour(4321);
 
-    paymentsRepository.store(payment);
+    paymentsRepository.save(payment);
 
     mvc.perform(MockMvcRequestBuilders.get("/payment/" + payment.getId()))
         .andExpect(status().isOk())
@@ -180,8 +181,9 @@ class PaymentGatewayControllerTest {
   }
 
   @Test
-  void whenBankReturnsNullThen201WithPendingStatus() throws Exception {
-    when(bankClient.processPayment(any(BankPaymentRequest.class))).thenReturn(null);
+  void whenBankUnavailableThen201WithPendingStatus() throws Exception {
+    when(bankClient.processPayment(any(BankPaymentRequest.class)))
+        .thenThrow(new BankUnavailableException("Bank unavailable"));
 
     String body = "{\"card_number\":\"2222405343248877\","
         + "\"expiry_month\":4,\"expiry_year\":2027,"
@@ -196,8 +198,9 @@ class PaymentGatewayControllerTest {
   }
 
   @Test
-  void whenBankReturnsNullThenReplayReturnsSamePendingAndBankNotCalledAgain() throws Exception {
-    when(bankClient.processPayment(any(BankPaymentRequest.class))).thenReturn(null);
+  void whenBankUnavailableThenReplayReturnsSamePendingAndBankNotCalledAgain() throws Exception {
+    when(bankClient.processPayment(any(BankPaymentRequest.class)))
+        .thenThrow(new BankUnavailableException("Bank unavailable"));
 
     String body = "{\"card_number\":\"2222405343248877\","
         + "\"expiry_month\":4,\"expiry_year\":2027,"
