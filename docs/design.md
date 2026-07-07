@@ -119,4 +119,6 @@ If bank client call failed, the payment status will be pending.
 
 The pending payment handler is a scheduler that will check pending status payments every 30s.   
 For simple, then handler just sets payment status to failed.   
-If bank client supports inquiry API, need query status and update payment status in paymentsRepository.
+
+If bank client supports inquiry API, need query status and update payment status in paymentsRepository.    
+If db status is not fund moved, but bank status is fund moved, need to refund for this long fund case.(refund is out of scope)    
