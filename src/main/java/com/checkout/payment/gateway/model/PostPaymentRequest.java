@@ -5,22 +5,22 @@ import java.io.Serializable;
 
 public class PostPaymentRequest implements Serializable {
 
-  @JsonProperty("card_number_last_four")
-  private int cardNumberLastFour;
+  @JsonProperty("card_number")
+  private String cardNumber;
   @JsonProperty("expiry_month")
   private int expiryMonth;
   @JsonProperty("expiry_year")
   private int expiryYear;
   private String currency;
   private int amount;
-  private int cvv;
+  private String cvv;
 
-  public int getCardNumberLastFour() {
-    return cardNumberLastFour;
+  public String getCardNumber() {
+    return cardNumber;
   }
 
-  public void setCardNumberLastFour(int cardNumberLastFour) {
-    this.cardNumberLastFour = cardNumberLastFour;
+  public void setCardNumber(String cardNumber) {
+    this.cardNumber = cardNumber;
   }
 
   public int getExpiryMonth() {
@@ -55,28 +55,28 @@ public class PostPaymentRequest implements Serializable {
     this.amount = amount;
   }
 
-  public int getCvv() {
+  public String getCvv() {
     return cvv;
   }
 
-  public void setCvv(int cvv) {
+  public void setCvv(String cvv) {
     this.cvv = cvv;
   }
 
   @JsonProperty("expiry_date")
   public String getExpiryDate() {
-    return String.format("%d/%d", expiryMonth, expiryYear);
+    return String.format("%02d/%d", expiryMonth, expiryYear);
   }
 
   @Override
   public String toString() {
     return "PostPaymentRequest{" +
-        "cardNumberLastFour=" + cardNumberLastFour +
+        "cardNumber=[REDACTED]" +
         ", expiryMonth=" + expiryMonth +
         ", expiryYear=" + expiryYear +
         ", currency='" + currency + '\'' +
         ", amount=" + amount +
-        ", cvv=" + cvv +
+        ", cvv=[REDACTED]" +
         '}';
   }
 }
