@@ -18,6 +18,9 @@ imposters/ - contains the bank simulator configuration. Don't change this
 
 docker-compose.yml - configures the bank simulator
 
+ 
+npx mountebank@2.8.1 --configfile ./imposters/bank_simulator.ejs --allowInjection  - Run the bank simulator
+
 
 ## API Documentation
 For documentation openAPI is included, and it can be found under the following url: **http://localhost:8090/swagger-ui/index.html**

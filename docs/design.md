@@ -98,6 +98,8 @@ The `Idempotency-Key` header prevents duplicate payment processing on retry.
 - Replay with the same key: returns the cached response. Bank is NOT called again. Same `id` returned.
 - All outcomes are cached, including Rejected.
 
+Actually bank simulator also need to add a Idempotency Key, such as merchantRefId to avoid duplicated pay.
+
 ---
 
 ## Bank Client Resilience

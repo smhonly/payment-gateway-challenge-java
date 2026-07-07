@@ -38,7 +38,7 @@ public class PaymentGatewayService {
     return paymentsRepository.get(id).orElseThrow(() -> new EventProcessingException("Invalid ID"));
   }
 
-  public PostPaymentResponse processPayment(PostPaymentRequest request, String idempotencyKey) {
+  public synchronized PostPaymentResponse processPayment(PostPaymentRequest request, String idempotencyKey) {
     if (idempotencyKey == null || idempotencyKey.isBlank()) {
       throw new InvalidRequestException("Idempotency-Key header is required");
     }
