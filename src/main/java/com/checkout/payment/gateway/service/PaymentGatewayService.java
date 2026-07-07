@@ -102,6 +102,9 @@ public class PaymentGatewayService {
   }
 
   private BankPaymentRequest toBankRequest(PostPaymentRequest request) {
+    //todo: need to add some Idempotency-Key for bank request,
+    //such as merchantRefId, to avoid duplicated payment.
+    //But currently simulator bank request is hardcoded here.
     BankPaymentRequest bankRequest = new BankPaymentRequest();
     bankRequest.setCardNumber(request.getCardNumber());
     bankRequest.setExpiryDate(request.getExpiryDate());
