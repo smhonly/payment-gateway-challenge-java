@@ -12,4 +12,20 @@ services:
       - type: bind
         source: ./imposters
         target: /imposters
-      
+
+  gateway:
+    container_name: payment-gateway
+    build: .
+    ports:
+      - "8090:8090"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    depends_on:
+      - bank_simulator
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped

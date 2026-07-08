@@ -1,0 +1,10 @@
+.gradle
+build/
+.git/
+.github/
+.idea/
+*.md
+imposters/
+out/
+postman/
+docs/
