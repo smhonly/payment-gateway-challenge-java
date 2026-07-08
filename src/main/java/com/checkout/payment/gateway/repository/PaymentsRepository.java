@@ -3,6 +3,7 @@ package com.checkout.payment.gateway.repository;
 import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,6 +24,15 @@ public class PaymentsRepository {
 
   public Optional<PostPaymentResponse> get(UUID id) {
     return Optional.ofNullable(payments.get(id));
+  }
+
+  public String getIdempotencyKey(UUID id) {
+    for (Map.Entry<String, UUID> e : idempotencyDb.entrySet()) {
+      if (e.getValue().equals(id)) {
+        return e.getKey();
+      }
+    }
+    return null;
   }
 
   public PostPaymentResponse get(String idempotencyKey) {

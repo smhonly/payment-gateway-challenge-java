@@ -23,11 +23,14 @@ public class PendingPaymentHandler {
   @Scheduled(fixedRate = 30000)
   public void handle() {
     List<PostPaymentResponse> pendings = paymentsRepository.findPending();
+    if (!pendings.isEmpty()) {
+      LOG.warn("pending_sweep count={}", pendings.size());
+    }
     for (PostPaymentResponse p : pendings) {
-      //option1. todo: if bank client support inquiry, need query status and update in paymentsRepository.
-      //option2. todo: retry bank call for 3 times.
+      //option 1. todo: if bank client support inquiry, need query status and update in paymentsRepository.
+      //option 2. todo: retry bank call for 3 times.
 
-      //for simple, just set to failed
+      //option 3. for simple, just set to failed
       p.setStatus(PaymentStatus.FAILED);
       paymentsRepository.save(p);
       LOG.warn("Reconciled old PENDING payment {} to FAILED", p.getId());

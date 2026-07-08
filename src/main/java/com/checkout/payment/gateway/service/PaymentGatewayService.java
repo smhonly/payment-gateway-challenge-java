@@ -44,8 +44,13 @@ public class PaymentGatewayService {
       throw new InvalidRequestException("Idempotency-Key header is required");
     }
 
+    long startNs = System.nanoTime();
+
     PostPaymentResponse cached = paymentsRepository.get(idempotencyKey);
     if (cached != null) {
+      long elapsedMs = (System.nanoTime() - startNs) / 1_000_000;
+      LOG.info("idempotency_hit id={} idem={} status={} elapsed_ms={}",
+          cached.getId(), idempotencyKey, cached.getStatus(), elapsedMs);
       return cached;
     }
 
@@ -58,6 +63,7 @@ public class PaymentGatewayService {
     } catch (InvalidRequestException e) {
       PostPaymentResponse rejected = buildResponse(request, paymentId, PaymentStatus.REJECTED);
       paymentsRepository.save(idempotencyKey, rejected);
+      logOutcome(paymentId, idempotencyKey, rejected, startNs);
       return rejected;
     }
 
@@ -65,21 +71,44 @@ public class PaymentGatewayService {
     paymentsRepository.save(idempotencyKey, response);
 
     BankPaymentRequest bankRequest = toBankRequest(request);
+    long bankStartNs = System.nanoTime();
     BankPaymentResponse bankResponse;
     try {
       bankResponse = bankClient.processPayment(bankRequest);
     } catch (BankUnavailableException e) {
+      long bankMs = (System.nanoTime() - bankStartNs) / 1_000_000;
+      LOG.info("bank_response id={} idem={} bank_ms={} status=UNAVAILABLE",
+          paymentId, idempotencyKey, bankMs);
       LOG.warn("Bank unavailable for payment {}; PENDING...", paymentId);
+      logOutcome(paymentId, idempotencyKey, response, startNs);
       return response;
     } catch (Exception e) {
+      long bankMs = (System.nanoTime() - bankStartNs) / 1_000_000;
+      LOG.info("bank_response id={} idem={} bank_ms={} status=ERROR",
+          paymentId, idempotencyKey, bankMs);
       LOG.error("Bank call error for payment {}.", paymentId, e);
+      logOutcome(paymentId, idempotencyKey, response, startNs);
       return response;
     }
+
+    long bankMs = (System.nanoTime() - bankStartNs) / 1_000_000;
+    LOG.info("bank_response id={} idem={} bank_ms={} status={}",
+        paymentId, idempotencyKey, bankMs,
+        bankResponse.isAuthorized() ? "AUTHORIZED" : "DECLINED");
 
     response.setStatus(bankResponse.isAuthorized()
         ? PaymentStatus.AUTHORIZED : PaymentStatus.DECLINED);
     paymentsRepository.save(idempotencyKey, response);
+    logOutcome(paymentId, idempotencyKey, response, startNs);
     return response;
+  }
+
+  private void logOutcome(UUID paymentId, String idemKey,
+      PostPaymentResponse response, long startNs) {
+    long elapsedMs = (System.nanoTime() - startNs) / 1_000_000;
+    LOG.info("payment_outcome id={} idem={} status={} amount={} currency={} elapsed_ms={}",
+        paymentId, idemKey, response.getStatus(),
+        response.getAmount(), response.getCurrency(), elapsedMs);
   }
 
   private void validate(PostPaymentRequest request) {

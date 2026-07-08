@@ -115,13 +115,51 @@ If PSP call success, circuit breaker will close.
 ---
 
 ## Pending Payment Handler
-If bank client call failed, the payment status will be pending.
+If bank client call failed, the payment status = Pending.
 
 The pending payment handler is a scheduler that will check pending status payments every 30s. 
+For simple, now the handler just follow the Option 1.(Failed status still is a final status).
 
-### Option 1. For simple, then handler just sets payment status to failed.   
+### Option 1. For simple, then handler just sets payment status to Failed.   
 
 ### Option 2. Retry bankClient.processPayment(bankRequest)
 
 ### Option 3. If bank client supports inquiry API, need query status and update payment status in paymentsRepository.    
-If db status is not fund moved, but bank status is fund moved, need to refund for this long fund case.(refund is out of scope)    
+If db status is not fund moved, but bank status is fund moved, need to refund for this long fund case.(refund is out of scope)
+
+---
+
+## Observability — Logs
+
+Four log events are emitted at INFO/WARN level. Each event is one line with `key=value` fields so they can be grep'd and parsed without a log aggregator.
+
+| Event | When | Fields |
+|---|---|---|
+| `idempotency_hit` | Cache hit on replay (no bank call) | `id idem status elapsed_ms` |
+| `payment_outcome` | Every first-time payment reaches a terminal state | `id idem status amount currency elapsed_ms` |
+| `bank_response` | Every bank call completes (or fails) | `id idem bank_ms status` where `status ∈ {AUTHORIZED, DECLINED, UNAVAILABLE, ERROR}` |
+| `pending_sweep` | Periodic 30 s sweep finds ≥ 1 PENDING payment | `count` |
+
+---
+
+## Health Checks
+
+`spring-boot-starter-actuator` is wired in. Endpoints exposed:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /actuator/health` | Overall status — 200 `UP` / 503 `DOWN` |
+| `GET /actuator/health/liveness` | k8s liveness probe — JVM is alive |
+| `GET /actuator/health/readiness` | k8s readiness probe — pod can accept traffic |
+
+Liveness checks only that the JVM is responsive. 
+Readiness by default includes only `readinessState`; 
+The bank circuit breaker and rate limiter are not included. To shed traffic when the bank side is failing, add:
+
+```properties
+management.health.circuitbreakers.enabled=true
+management.endpoint.health.group.readiness.include=readinessState,circuitBreakers
+```
+
+Then `circuitBreakers` indicator reports `UP` / `DOWN` based on `resilience4j.circuitbreaker.instances.bank`。
+K8s will stop routing new requests to the pod while the breaker is open.    
