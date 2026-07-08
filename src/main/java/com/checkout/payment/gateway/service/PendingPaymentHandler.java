@@ -28,7 +28,7 @@ public class PendingPaymentHandler {
     }
     for (PostPaymentResponse p : pendings) {
       //option 1. todo: if bank client support inquiry, need query status and update in paymentsRepository.
-      //option 2. todo: retry bank call for 3 times.
+      //option 2. todo: retry bank call(Need to store PAN+CVV in DB, they are PCI DSS data).
 
       //option 3. for simple, just set to failed
       p.setStatus(PaymentStatus.FAILED);

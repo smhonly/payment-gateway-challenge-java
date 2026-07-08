@@ -122,7 +122,7 @@ For simple, now the handler just follow the Option 1.(Failed status still is a f
 
 ### Option 1. For simple, then handler just sets payment status to Failed.   
 
-### Option 2. Retry bankClient.processPayment(bankRequest)
+### Option 2. Retry bankClient.processPayment(Need to store PAN+CVV in DB, they are PCI DSS data)
 
 ### Option 3. If bank client supports inquiry API, need query status and update payment status in paymentsRepository.    
 If db status is not fund moved, but bank status is fund moved, need to refund for this long fund case.(refund is out of scope)
