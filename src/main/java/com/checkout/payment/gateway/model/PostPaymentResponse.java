@@ -1,6 +1,7 @@
 package com.checkout.payment.gateway.model;
 
 import com.checkout.payment.gateway.enums.PaymentStatus;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.UUID;
 
 public class PostPaymentResponse {
@@ -11,6 +12,8 @@ public class PostPaymentResponse {
   private int expiryYear;
   private String currency;
   private int amount;
+  @JsonIgnore
+  private String requestHash;
 
 
   public UUID getId() {
@@ -67,6 +70,14 @@ public class PostPaymentResponse {
 
   public void setAmount(int amount) {
     this.amount = amount;
+  }
+
+  public String getRequestHash() {
+    return requestHash;
+  }
+
+  public void setRequestHash(String requestHash) {
+    this.requestHash = requestHash;
   }
 
   @Override

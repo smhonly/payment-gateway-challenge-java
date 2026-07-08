@@ -94,13 +94,10 @@ The `Idempotency-Key` header prevents duplicate payment processing on retry.
 
 ### Behavior
 
-- First request with a key: processes normally, bank is called, response is cached.
-- Replay with the same key: returns the cached response. Bank is NOT called again. Same `id` returned.
+- First request: SHA-256 hash of the request body is stored with the cached response.
+- Replay with the same key: hash is compared. If body differs, the request is rejected (400).    
+- If body matches, cached response is returned — bank NOT called again.
 - All outcomes are cached, including Rejected.
-
-Actually bank simulator also need to add an Idempotency Key, such as merchantRefId to avoid duplicated pay.
-
----
 
 ## Bank Client Resilience
 
@@ -162,4 +159,13 @@ management.endpoint.health.group.readiness.include=readinessState,circuitBreaker
 ```
 
 Then `circuitBreakers` indicator reports `UP` / `DOWN` based on `resilience4j.circuitbreaker.instances.bank`。
-K8s will stop routing new requests to the pod while the breaker is open.    
+K8s will stop routing new requests to the pod while the breaker is open.
+
+---
+
+## Open Questions
+
+If we don't save Pending status resposne in Idempotency DB, we can retry for pending status.     
+But there will be 1 risk:    
+**Duplicate pay risk on retry.** If the first call times out at the bank (bank may have authorized) and the retry succeeds, the bank receives two authorizations. 
+Bank API must support idempotency key(e.g. `merchantRefId` / `idempotencyKey` passed to the bank).

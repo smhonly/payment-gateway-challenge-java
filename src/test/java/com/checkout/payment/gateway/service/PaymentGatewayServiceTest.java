@@ -241,6 +241,7 @@ class PaymentGatewayServiceTest {
     PostPaymentResponse cached = new PostPaymentResponse();
     cached.setId(existingId);
     cached.setStatus(PaymentStatus.AUTHORIZED);
+    cached.setRequestHash("b1e4662d7a923d0c47fa2c6014415101a67391126d5929a5fae917342a068d84");
     when(paymentsRepository.get(KEY)).thenReturn(cached);
 
     PostPaymentResponse result = service.processPayment(validRequest(), KEY);
