@@ -27,6 +27,12 @@ public class CommonExceptionHandler {
     return new ResponseEntity<>(new ErrorResponse("Malformed request body"), HttpStatus.BAD_REQUEST);
   }
 
+  @ExceptionHandler(ConflictException.class)
+  public ResponseEntity<ErrorResponse> handleConflict(ConflictException ex) {
+    LOG.warn("Conflict: {}", ex.getMessage());
+    return new ResponseEntity<>(new ErrorResponse(ex.getMessage()), HttpStatus.CONFLICT);
+  }
+
   @ExceptionHandler(MissingRequestHeaderException.class)
   public ResponseEntity<ErrorResponse> handleMissingHeader(MissingRequestHeaderException ex) {
     String name = ex.getHeaderName();

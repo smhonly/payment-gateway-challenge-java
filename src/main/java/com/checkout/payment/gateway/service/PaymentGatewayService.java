@@ -3,6 +3,7 @@ package com.checkout.payment.gateway.service;
 import com.checkout.payment.gateway.client.BankClient;
 import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.exception.BankUnavailableException;
+import com.checkout.payment.gateway.exception.ConflictException;
 import com.checkout.payment.gateway.exception.EventProcessingException;
 import com.checkout.payment.gateway.exception.InvalidRequestException;
 import com.checkout.payment.gateway.model.BankPaymentRequest;
@@ -10,12 +11,15 @@ import com.checkout.payment.gateway.model.BankPaymentResponse;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.repository.PaymentsRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.YearMonth;
 import java.util.HexFormat;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,11 +33,13 @@ public class PaymentGatewayService {
 
   private final PaymentsRepository paymentsRepository;
   private final BankClient bankClient;
+  private final MeterRegistry meterRegistry;
 
   public PaymentGatewayService(PaymentsRepository paymentsRepository,
-      BankClient bankClient) {
+      BankClient bankClient, MeterRegistry meterRegistry) {
     this.paymentsRepository = paymentsRepository;
     this.bankClient = bankClient;
+    this.meterRegistry = meterRegistry;
   }
 
   public PostPaymentResponse getPaymentById(UUID id) {
@@ -41,8 +47,7 @@ public class PaymentGatewayService {
     return paymentsRepository.get(id).orElseThrow(() -> new EventProcessingException("Invalid ID"));
   }
 
-  public PostPaymentResponse processPayment(PostPaymentRequest request,
-      String idempotencyKey) {
+  public PostPaymentResponse processPayment(PostPaymentRequest request, String idempotencyKey) {
     if (idempotencyKey == null || idempotencyKey.isBlank()) {
       throw new InvalidRequestException("Idempotency-Key header is required");
     }
@@ -50,71 +55,105 @@ public class PaymentGatewayService {
     long startMs = System.currentTimeMillis();
     String requestHash = hashRequest(request);
 
-    PostPaymentResponse cached = paymentsRepository.get(idempotencyKey);
+    PostPaymentResponse cached = findCached(idempotencyKey, requestHash, startMs);
     if (cached != null) {
-      if (!requestHash.equals(cached.getRequestHash())) {
-        throw new InvalidRequestException("IdempotencyKey with a invalid request body");
-      }
-      long elapsedMs = System.currentTimeMillis() - startMs;
-      LOG.info("idempotency_hit id={} idem={} status={} elapsed_ms={}",
-          cached.getId(), idempotencyKey, cached.getStatus(), elapsedMs);
       return cached;
     }
 
     UUID paymentId = UUID.randomUUID();
-    PostPaymentResponse response;
-
     try {
       validate(request);
     } catch (InvalidRequestException e) {
       PostPaymentResponse rejected = buildResponse(request, paymentId, PaymentStatus.REJECTED);
-      paymentsRepository.save(idempotencyKey, rejected);
-      logOutcome(paymentId, idempotencyKey, rejected, startMs);
+      recordOutcome(paymentId, idempotencyKey, rejected, startMs);
       return rejected;
     }
 
-    response = buildResponse(request, paymentId, PaymentStatus.PENDING);
+    PostPaymentResponse response = buildResponse(request, paymentId, PaymentStatus.PENDING);
     paymentsRepository.save(idempotencyKey, response);
+    return invokeBank(request, idempotencyKey, paymentId, response, startMs);
+  }
 
+  private PostPaymentResponse findCached(String idempotencyKey, String requestHash, long startMs) {
+    PostPaymentResponse cached = paymentsRepository.get(idempotencyKey);
+    if (cached == null) {
+      return null;
+    }
+    if (cached.getStatus() == PaymentStatus.PENDING) {
+      throw new ConflictException("Request already in progress");
+    }
+    if (!requestHash.equals(cached.getRequestHash())) {
+      throw new InvalidRequestException("IdempotencyKey with a invalid request body");
+    }
+    LOG.info("idempotency_hit id={} idem={} status={} elapsed_ms={}",
+        cached.getId(), idempotencyKey, cached.getStatus(),
+        System.currentTimeMillis() - startMs);
+    meterRegistry.counter("payments.idempotency.hits",
+        "status", cached.getStatus().name()).increment();
+    return cached;
+  }
+
+  private PostPaymentResponse invokeBank(PostPaymentRequest request, String idempotencyKey,
+      UUID paymentId, PostPaymentResponse response, long startMs) {
     BankPaymentRequest bankRequest = toBankRequest(request);
     long bankStartMs = System.currentTimeMillis();
+    Timer.Sample bankTimer = Timer.start(meterRegistry);
     BankPaymentResponse bankResponse;
     try {
       bankResponse = bankClient.processPayment(bankRequest);
     } catch (BankUnavailableException e) {
-      long bankMs = System.currentTimeMillis() - bankStartMs;
-      LOG.error("bank_response id={} idem={} bank_ms={} status=UNAVAILABLE",
-          paymentId, idempotencyKey, bankMs);
-      LOG.error("Bank unavailable for payment {}; PENDING...", paymentId);
-      logOutcome(paymentId, idempotencyKey, response, startMs);
-      return response;
+      return recordBankFailure(paymentId, idempotencyKey, response, bankTimer, bankStartMs,
+          startMs, "UNAVAILABLE");
     } catch (Exception e) {
-      long bankMs = System.currentTimeMillis() - bankStartMs;
-      LOG.error("bank_response id={} idem={} bank_ms={} status=ERROR",
-          paymentId, idempotencyKey, bankMs);
-      LOG.error("Bank call error for payment {}.", paymentId, e);
-      logOutcome(paymentId, idempotencyKey, response, startMs);
-      return response;
+      return recordBankFailure(paymentId, idempotencyKey, response, bankTimer, bankStartMs,
+          startMs, "ERROR", e);
     }
-
     long bankMs = System.currentTimeMillis() - bankStartMs;
+    String bankStatus = bankResponse.isAuthorized() ? "AUTHORIZED" : "DECLINED";
+    bankTimer.stop(Timer.builder("payments.bank.duration")
+        .tag("status", bankStatus).register(meterRegistry));
     LOG.info("bank_response id={} idem={} bank_ms={} status={}",
-        paymentId, idempotencyKey, bankMs,
-        bankResponse.isAuthorized() ? "AUTHORIZED" : "DECLINED");
-
+        paymentId, idempotencyKey, bankMs, bankStatus);
     response.setStatus(bankResponse.isAuthorized()
         ? PaymentStatus.AUTHORIZED : PaymentStatus.DECLINED);
     paymentsRepository.save(idempotencyKey, response);
-    logOutcome(paymentId, idempotencyKey, response, startMs);
+    recordOutcome(paymentId, idempotencyKey, response, startMs);
     return response;
   }
 
-  private void logOutcome(UUID paymentId, String idemKey,
+  private PostPaymentResponse recordBankFailure(UUID paymentId, String idempotencyKey,
+      PostPaymentResponse response, Timer.Sample bankTimer, long bankStartMs, long startMs,
+      String status, Exception... cause) {
+    long bankMs = System.currentTimeMillis() - bankStartMs;
+    bankTimer.stop(Timer.builder("payments.bank.duration")
+        .tag("status", status).register(meterRegistry));
+    LOG.error("bank_response id={} idem={} bank_ms={} status={}",
+        paymentId, idempotencyKey, bankMs, status);
+    if (cause.length > 0) {
+      LOG.error("Bank call error for payment {}.", paymentId, cause[0]);
+    } else {
+      LOG.error("Bank unavailable for payment {}; PENDING...", paymentId);
+    }
+    recordOutcome(paymentId, idempotencyKey, response, startMs);
+    return response;
+  }
+
+  private void recordOutcome(UUID paymentId, String idemKey,
       PostPaymentResponse response, long startMs) {
     long elapsedMs = System.currentTimeMillis() - startMs;
     LOG.info("payment_outcome id={} idem={} status={} amount={} currency={} elapsed_ms={}",
         paymentId, idemKey, response.getStatus(),
         response.getAmount(), response.getCurrency(), elapsedMs);
+
+    meterRegistry.counter("payments.processed.total",
+        "status", response.getStatus().name(),
+        "currency", response.getCurrency()).increment();
+
+    Timer.builder("payments.processing.duration")
+        .tag("status", response.getStatus().name())
+        .tag("currency", response.getCurrency())
+        .register(meterRegistry)
+        .record(elapsedMs, TimeUnit.MILLISECONDS);
   }
 
   private void validate(PostPaymentRequest request) {
@@ -142,7 +181,7 @@ public class PaymentGatewayService {
   }
 
   private BankPaymentRequest toBankRequest(PostPaymentRequest request) {
-    //todo: need to add some Idempotency-Key for bank request,
+    //todo: need to add Idempotency-Key for bank request,
     //such as merchantRefId, to avoid duplicated payment.
     //But currently simulator bank request is hardcoded here.
     BankPaymentRequest bankRequest = new BankPaymentRequest();
@@ -185,7 +224,7 @@ public class PaymentGatewayService {
     }
   }
 
-  private int safeLastFour(String cardNumber) {
+  int safeLastFour(String cardNumber) {
     if (cardNumber == null || cardNumber.length() < 4) {
       return 0;
     }

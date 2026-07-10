@@ -20,10 +20,13 @@ import com.checkout.payment.gateway.model.BankPaymentResponse;
 import com.checkout.payment.gateway.model.PostPaymentRequest;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.repository.PaymentsRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.time.YearMonth;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -35,6 +38,8 @@ class PaymentGatewayServiceTest {
   PaymentsRepository paymentsRepository;
   @Mock
   BankClient bankClient;
+  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+  MeterRegistry meterRegistry;
   @InjectMocks
   PaymentGatewayService service;
 
@@ -142,6 +147,33 @@ class PaymentGatewayServiceTest {
   }
 
   @Test
+  void processPayment_whenExpiryCurrentMonth_isValid() {
+    YearMonth now = YearMonth.now();
+    PostPaymentRequest req = validRequest();
+    req.setExpiryMonth(now.getMonthValue());
+    req.setExpiryYear(now.getYear());
+
+    BankPaymentResponse bankResponse = new BankPaymentResponse();
+    bankResponse.setAuthorized(true);
+    when(bankClient.processPayment(any(BankPaymentRequest.class))).thenReturn(bankResponse);
+
+    PostPaymentResponse result = service.processPayment(req, KEY);
+
+    assertThat(result.getStatus()).isNotEqualTo(PaymentStatus.REJECTED);
+  }
+
+  @Test
+  void processPayment_whenExpiryLastMonth_returnsRejected() {
+    YearMonth lastMonth = YearMonth.now().minusMonths(1);
+    PostPaymentRequest req = validRequest();
+    req.setExpiryMonth(lastMonth.getMonthValue());
+    req.setExpiryYear(lastMonth.getYear());
+
+    assertThat(service.processPayment(req, KEY).getStatus())
+        .isEqualTo(PaymentStatus.REJECTED);
+  }
+
+  @Test
   void processPayment_whenCurrencyUnsupported_returnsRejected() {
     PostPaymentRequest req = validRequest();
     req.setCurrency("XYZ");
@@ -184,6 +216,35 @@ class PaymentGatewayServiceTest {
 
     assertThat(service.processPayment(req, KEY).getStatus())
         .isEqualTo(PaymentStatus.REJECTED);
+  }
+
+  // ---------- processPayment: bank flows ----------
+
+  // ---------- safeLastFour ----------
+
+  @Test
+  void safeLastFour_whenNormal_returnsLastFourDigits() {
+    assertThat(service.safeLastFour("2222405343248877")).isEqualTo(8877);
+  }
+
+  @Test
+  void safeLastFour_whenNull_returnsZero() {
+    assertThat(service.safeLastFour(null)).isZero();
+  }
+
+  @Test
+  void safeLastFour_whenShorterThanFour_returnsZero() {
+    assertThat(service.safeLastFour("123")).isZero();
+  }
+
+  @Test
+  void safeLastFour_whenLeadingZeros_stillReturnsInt() {
+    assertThat(service.safeLastFour("2222405343240012")).isEqualTo(12);
+  }
+
+  @Test
+  void safeLastFour_whenNonNumeric_returnsZero() {
+    assertThat(service.safeLastFour("222240534324abcd")).isZero();
   }
 
   // ---------- processPayment: bank flows ----------
@@ -234,6 +295,22 @@ class PaymentGatewayServiceTest {
   }
 
   // ---------- processPayment: replay path ----------
+
+  @Test
+  void processPayment_replayWithDifferentBody_throwsInvalidRequest() {
+    PostPaymentResponse cached = new PostPaymentResponse();
+    cached.setStatus(PaymentStatus.AUTHORIZED);
+    cached.setRequestHash("hash-of-original-body");
+    when(paymentsRepository.get(KEY)).thenReturn(cached);
+
+    PostPaymentRequest req = validRequest();
+    req.setAmount(999);
+
+    assertThatThrownBy(() -> service.processPayment(req, KEY))
+        .isInstanceOf(InvalidRequestException.class)
+        .hasMessageContaining("IdempotencyKey");
+    verify(bankClient, never()).processPayment(any());
+  }
 
   @Test
   void processPayment_replayHit_returnsCachedAndSkipsBank() {

@@ -16,9 +16,12 @@ imposters/ - contains the bank simulator configuration. Don't change this
 
 .editorconfig - don't change this. It ensures a consistent set of rules for submissions when reformatting code
 
-docker-compose.yml - configures the bank simulator
+## docker-compose.yml - configures the bank simulator
+sudo docker compose up -d
 
- 
+## check prometheus
+http://localhost:8090/actuator/prometheus
+
 npx mountebank@2.8.1 --configfile ./imposters/bank_simulator.ejs --allowInjection  - Run the bank simulator
 
 

@@ -10,11 +10,13 @@ import static org.mockito.Mockito.when;
 import com.checkout.payment.gateway.enums.PaymentStatus;
 import com.checkout.payment.gateway.model.PostPaymentResponse;
 import com.checkout.payment.gateway.repository.PaymentsRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -24,6 +26,8 @@ class PendingPaymentHandlerTest {
 
   @Mock
   PaymentsRepository paymentsRepository;
+  @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+  MeterRegistry meterRegistry;
   @InjectMocks
   PendingPaymentHandler handler;
 

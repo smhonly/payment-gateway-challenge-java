@@ -135,6 +135,37 @@ class PaymentGatewayControllerTest {
   }
 
   @Test
+  void whenIdempotencyKeyReplayedWithDifferentBodyThen400() throws Exception {
+    String body1 = "{\"card_number\":\"2222405343248877\","
+        + "\"expiry_month\":4,\"expiry_year\":2027,"
+        + "\"currency\":\"GBP\",\"amount\":100,\"cvv\":\"123\"}";
+    String body2 = "{\"card_number\":\"2222405343248877\","
+        + "\"expiry_month\":4,\"expiry_year\":2027,"
+        + "\"currency\":\"GBP\",\"amount\":999,\"cvv\":\"123\"}";
+
+    BankPaymentResponse bankResponse = new BankPaymentResponse();
+    bankResponse.setAuthorized(true);
+    when(bankClient.processPayment(any(BankPaymentRequest.class))).thenReturn(bankResponse);
+
+    String idemKey = "hash-mismatch-key";
+
+    mvc.perform(MockMvcRequestBuilders.post("/payment")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", idemKey)
+            .content(body1))
+        .andExpect(status().isCreated());
+
+    mvc.perform(MockMvcRequestBuilders.post("/payment")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", idemKey)
+            .content(body2))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value(containsString("IdempotencyKey")));
+
+    verify(bankClient, times(1)).processPayment(any(BankPaymentRequest.class));
+  }
+
+  @Test
   void whenSameIdempotencyKeyReplayedThenBankCalledOnceAndSameId() throws Exception {
     BankPaymentResponse bankResponse = new BankPaymentResponse();
     bankResponse.setAuthorized(true);
@@ -219,14 +250,10 @@ class PaymentGatewayControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .header("Idempotency-Key", idempotencyKey)
             .content(body))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.status").value("Pending"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.message").value(containsString("in progress")))
         .andReturn().getResponse().getContentAsString();
 
-    ObjectMapper mapper = new ObjectMapper();
-    String firstId = mapper.readTree(firstBody).get("id").asText();
-    String secondId = mapper.readTree(secondBody).get("id").asText();
-    assertEquals(firstId, secondId);
     verify(bankClient, times(1)).processPayment(any(BankPaymentRequest.class));
   }
 }
