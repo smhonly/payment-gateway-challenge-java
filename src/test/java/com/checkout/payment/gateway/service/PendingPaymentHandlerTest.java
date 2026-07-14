@@ -1,7 +1,8 @@
 package com.checkout.payment.gateway.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -37,7 +38,7 @@ class PendingPaymentHandlerTest {
 
     handler.handle();
 
-    verify(paymentsRepository, never()).save(anyPayment());
+    verify(paymentsRepository, never()).save(anyString(), any());
   }
 
   @Test
@@ -45,11 +46,12 @@ class PendingPaymentHandlerTest {
     UUID id = UUID.randomUUID();
     PostPaymentResponse pending = newPending(id);
     when(paymentsRepository.findPending()).thenReturn(List.of(pending));
+    when(paymentsRepository.getIdempotencyKey(id)).thenReturn("idem-1");
 
     handler.handle();
 
     assertThat(pending.getStatus()).isEqualTo(PaymentStatus.FAILED);
-    verify(paymentsRepository, times(1)).save(pending);
+    verify(paymentsRepository, times(1)).save("idem-1", pending);
   }
 
   @Test
@@ -58,13 +60,18 @@ class PendingPaymentHandlerTest {
     PostPaymentResponse b = newPending(UUID.randomUUID());
     PostPaymentResponse c = newPending(UUID.randomUUID());
     when(paymentsRepository.findPending()).thenReturn(List.of(a, b, c));
+    when(paymentsRepository.getIdempotencyKey(a.getId())).thenReturn("idem-a");
+    when(paymentsRepository.getIdempotencyKey(b.getId())).thenReturn("idem-b");
+    when(paymentsRepository.getIdempotencyKey(c.getId())).thenReturn("idem-c");
 
     handler.handle();
 
     assertThat(a.getStatus()).isEqualTo(PaymentStatus.FAILED);
     assertThat(b.getStatus()).isEqualTo(PaymentStatus.FAILED);
     assertThat(c.getStatus()).isEqualTo(PaymentStatus.FAILED);
-    verify(paymentsRepository, times(3)).save(anyPayment());
+    verify(paymentsRepository, times(1)).save("idem-a", a);
+    verify(paymentsRepository, times(1)).save("idem-b", b);
+    verify(paymentsRepository, times(1)).save("idem-c", c);
   }
 
   private PostPaymentResponse newPending(UUID id) {
@@ -74,7 +81,4 @@ class PendingPaymentHandlerTest {
     return p;
   }
 
-  private static PostPaymentResponse anyPayment() {
-    return argThat(p -> true);
-  }
 }

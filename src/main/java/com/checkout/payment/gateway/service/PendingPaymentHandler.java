@@ -36,9 +36,11 @@ public class PendingPaymentHandler {
       //option 1. todo: if bank client support inquiry, need query status and update in paymentsRepository.
       //option 2. todo: retry bank call(Need to store PAN+CVV in DB, they are PCI DSS data).
 
-      //option 3. for simple, just set to failed
+      //option 3. for simple, just set to failed.
+      //Should check psp transaction timeout if on prod.
       p.setStatus(PaymentStatus.FAILED);
-      paymentsRepository.save(p);
+      String idempotencyKey = paymentsRepository.getIdempotencyKey(p.getId());
+      paymentsRepository.save(idempotencyKey, p);
       LOG.warn("Reconciled old PENDING payment {} to FAILED", p.getId());
     }
 

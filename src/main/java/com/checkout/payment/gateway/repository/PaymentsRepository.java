@@ -17,11 +17,6 @@ public class PaymentsRepository {
   private final ConcurrentHashMap<UUID, PostPaymentResponse> payments = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<String, UUID> idempotencyDb = new ConcurrentHashMap<>();
 
-  @Transactional
-  public void save(PostPaymentResponse payment) {
-    payments.put(payment.getId(), payment);
-  }
-
   public Optional<PostPaymentResponse> get(UUID id) {
     return Optional.ofNullable(payments.get(id));
   }
