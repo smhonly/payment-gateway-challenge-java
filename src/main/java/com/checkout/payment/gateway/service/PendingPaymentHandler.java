@@ -27,6 +27,7 @@ public class PendingPaymentHandler {
 
   @Scheduled(fixedRate = 30000)
   public void handle() {
+    //todo: for multi instance on prod, need to get redis lock first.
     long start = System.currentTimeMillis();
     List<PostPaymentResponse> pendings = paymentsRepository.findPending();
     if (!pendings.isEmpty()) {

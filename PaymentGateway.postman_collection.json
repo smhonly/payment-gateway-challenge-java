@@ -1,0 +1,359 @@
+{
+  "info": {
+    "name": "Payment Gateway",
+    "description": "Payment Gateway API test cases",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8090"
+    }
+  ],
+  "item": [
+    {
+      "name": "POST /payment - Authorized",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('Status is Authorized', () => pm.expect(pm.response.json().status).to.eql('Authorized'));",
+              "pm.test('cardNumberLastFour is 8877', () => pm.expect(pm.response.json().cardNumberLastFour).to.eql(8877));",
+              "pm.test('currency is GBP', () => pm.expect(pm.response.json().currency).to.eql('GBP'));",
+              "pm.test('amount is 100', () => pm.expect(pm.response.json().amount).to.eql(100));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"2222405343248877\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 100,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Declined",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('Status is Declined', () => pm.expect(pm.response.json().status).to.eql('Declined'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"2222405343248874\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 100,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Card Number Too Short (Rejected)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('Status is Rejected', () => pm.expect(pm.response.json().status).to.eql('Rejected'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"123\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 100,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Malformed Body",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+              "pm.test('Error message contains Malformed', () => pm.expect(pm.response.json().message).to.include('Malformed request body'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{not json"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Missing Idempotency-Key",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+              "pm.test('Error message contains Idempotency-Key', () => pm.expect(pm.response.json().message).to.include('Idempotency-Key'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"2222405343248877\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 100,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Idempotency Replay (Same Key, Different Body)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 400', () => pm.response.to.have.status(400));",
+              "pm.test('Error message contains IdempotencyKey', () => pm.expect(pm.response.json().message).to.include('IdempotencyKey'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "hash-mismatch-key"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"2222405343248877\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 999,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Idempotency Replay (Same Key, Same Body)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('Status is Authorized', () => pm.expect(pm.response.json().status).to.eql('Authorized'));",
+              "",
+              "// Store payment ID for GET verification",
+              "var paymentId = pm.response.json().id;",
+              "pm.environment.set('paymentId', paymentId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "replay-key-123"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"2222405343248877\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 100,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Bank Unavailable (Pending)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('Status is Pending', () => pm.expect(pm.response.json().status).to.eql('Pending'));",
+              "",
+              "// Store payment ID for GET verification",
+              "var paymentId = pm.response.json().id;",
+              "pm.environment.set('pendingPaymentId', paymentId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"2222405343248877\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 100,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "POST /payment - Pending Replay (Conflict)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+              "pm.test('Error message contains in progress', () => pm.expect(pm.response.json().message).to.include('in progress'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/payment",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "pending-replay-key"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"card_number\": \"2222405343248877\",\n  \"expiry_month\": 4,\n  \"expiry_year\": 2027,\n  \"currency\": \"GBP\",\n  \"amount\": 100,\n  \"cvv\": \"123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "GET /payment/{id} - Existing Payment",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('Response has status field', () => pm.expect(pm.response.json()).to.have.property('status'));",
+              "pm.test('Response has cardNumberLastFour', () => pm.expect(pm.response.json()).to.have.property('cardNumberLastFour'));",
+              "pm.test('Response has expiryMonth', () => pm.expect(pm.response.json()).to.have.property('expiryMonth'));",
+              "pm.test('Response has expiryYear', () => pm.expect(pm.response.json()).to.have.property('expiryYear'));",
+              "pm.test('Response has currency', () => pm.expect(pm.response.json()).to.have.property('currency'));",
+              "pm.test('Response has amount', () => pm.expect(pm.response.json()).to.have.property('amount'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/payment/{{paymentId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["payment", "{{paymentId}}"]
+        }
+      }
+    },
+    {
+      "name": "GET /payment/{id} - Not Found",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+              "pm.test('Error message is Page not found', () => pm.expect(pm.response.json().message).to.eql('Page not found'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/payment/00000000-0000-0000-0000-000000000000",
+          "host": ["{{baseUrl}}"],
+          "path": ["payment", "00000000-0000-0000-0000-000000000000"]
+        }
+      }
+    }
+  ]
+}
